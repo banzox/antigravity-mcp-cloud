@@ -1,0 +1,7 @@
+{
+  "name": "antigravity-mcp-cloud",
+  "version": "1.0.0",
+  "description": "24/7 Antigravity MCP Server for Gemini Spark hosted on Vercel",
+  "main": "api/index.js",
+  "type": "module"
+}
