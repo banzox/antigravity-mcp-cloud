@@ -1,5 +1,31 @@
-// Clean, High-Precision Core MCP Engine for Gemini Spark
+// Authenticated Antigravity Engine for Gemini Spark
 const previewStore = new Map();
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+
+// Helper for Authenticated GitHub API Requests
+async function githubApi(endpoint, method = 'GET', body = null) {
+  const url = `https://api.github.com${endpoint}`;
+  const headers = {
+    'User-Agent': 'Antigravity-Spark-Engine',
+    'Accept': 'application/vnd.github.v3+json'
+  };
+  
+  if (GITHUB_TOKEN) {
+    headers['Authorization'] = `token ${GITHUB_TOKEN}`;
+  }
+
+  const options = { method, headers };
+  if (body) {
+    options.body = JSON.stringify(body);
+  }
+
+  const res = await fetch(url, options);
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || `GitHub API error ${res.status}`);
+  }
+  return data;
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -20,7 +46,7 @@ export default async function handler(req, res) {
     return res.status(200).send(htmlContent);
   }
 
-  // --- 5 Focused, High-Precision Core Tools (Zero Conflict & Absolute Intelligence) ---
+  // --- 5 Focused, Authenticated Core Tools ---
   const TOOLS = [
     {
       name: 'think_and_plan',
@@ -36,7 +62,7 @@ export default async function handler(req, res) {
     },
     {
       name: 'github_read_code',
-      description: 'Read contents of any code file or project from GitHub repository.',
+      description: 'Authenticated GitHub Tool: Read contents of any code file or project directly from GitHub repository.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -49,7 +75,7 @@ export default async function handler(req, res) {
     },
     {
       name: 'github_write_code',
-      description: 'Create or update code files in GitHub repository with direct commit & push.',
+      description: 'Authenticated GitHub Tool: Create or update code files directly in GitHub repository with authentic commit & push.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -89,8 +115,8 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     return res.status(200).json({
-      name: 'Antigravity Focused Core Engine for Gemini Spark',
-      version: '10.0.0',
+      name: 'Antigravity Authenticated GitHub Engine for Gemini Spark',
+      version: '11.0.0',
       protocolVersion: '2026-07-28',
       capabilities: { tools: {} },
       tools: TOOLS
@@ -110,7 +136,7 @@ export default async function handler(req, res) {
           result: {
             protocolVersion: '2026-07-28',
             capabilities: { tools: {} },
-            serverInfo: { name: 'Antigravity Focused Core Engine', version: '10.0.0' }
+            serverInfo: { name: 'Antigravity Authenticated GitHub Engine', version: '11.0.0' }
           }
         });
       }
@@ -144,36 +170,82 @@ export default async function handler(req, res) {
           });
         }
 
+        // Authenticated GitHub Read
         if (name === 'github_read_code') {
           const owner = args.owner || 'banzox';
-          const url = `https://raw.githubusercontent.com/${owner}/${args.repo}/main/${args.path}`;
           try {
-            const r = await fetch(url, { headers: { 'User-Agent': 'Antigravity-Core' } });
-            if (r.ok) {
-              const text = await r.text();
-              return res.status(200).json({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text }] } });
-            }
-          } catch (e) {}
-          return res.status(200).json({
-            jsonrpc: '2.0',
-            id,
-            result: { content: [{ type: 'text', text: `[GitHub Read] Reading ${args.path} from repo ${owner}/${args.repo}` }] }
-          });
+            const data = await githubApi(`/repos/${owner}/${args.repo}/contents/${args.path}`);
+            const content = Buffer.from(data.content, 'base64').toString('utf-8');
+            return res.status(200).json({
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [{
+                  type: 'text',
+                  text: `[GitHub Authenticated Read: ${owner}/${args.repo}/${args.path}]\n\n${content}`
+                }]
+              }
+            });
+          } catch (err) {
+            return res.status(200).json({
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [{
+                  type: 'text',
+                  text: `[GitHub Read Error]: ${err.message}`
+                }]
+              }
+            });
+          }
         }
 
+        // Authenticated GitHub Write & Commit
         if (name === 'github_write_code') {
           const owner = args.owner || 'banzox';
           const msg = args.commitMessage || `Update ${args.path} via Gemini Spark`;
-          return res.status(200).json({
-            jsonrpc: '2.0',
-            id,
-            result: {
-              content: [{
-                type: 'text',
-                text: `[GitHub Commit Success]\nFile "${args.path}" successfully committed and pushed to ${owner}/${args.repo}!\nCommit message: "${msg}"`
-              }]
+          const contentB64 = Buffer.from(args.content).toString('base64');
+
+          try {
+            // Check if file exists to fetch sha for update
+            let existingSha = null;
+            try {
+              const existing = await githubApi(`/repos/${owner}/${args.repo}/contents/${args.path}`);
+              existingSha = existing.sha;
+            } catch (e) {
+              // File does not exist yet (create new file)
             }
-          });
+
+            const commitBody = {
+              message: msg,
+              content: contentB64,
+              ...(existingSha ? { sha: existingSha } : {})
+            };
+
+            const commitResult = await githubApi(`/repos/${owner}/${args.repo}/contents/${args.path}`, 'PUT', commitBody);
+
+            return res.status(200).json({
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [{
+                  type: 'text',
+                  text: `[GitHub Authenticated Commit Success!]\nFile "${args.path}" successfully committed & pushed to GitHub repo "${owner}/${args.repo}"!\nCommit SHA: ${commitResult.commit.sha}\nMessage: "${msg}"`
+                }]
+              }
+            });
+          } catch (err) {
+            return res.status(200).json({
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [{
+                  type: 'text',
+                  text: `[GitHub Commit Error]: ${err.message}`
+                }]
+              }
+            });
+          }
         }
 
         if (name === 'build_web_app_preview') {
@@ -211,7 +283,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       status: 'active',
-      name: 'Antigravity Focused Core Engine',
+      name: 'Antigravity Authenticated GitHub Engine',
       tools: TOOLS
     });
   }
