@@ -1,4 +1,4 @@
-// Authenticated Antigravity Engine for Gemini Spark
+// Authenticated Antigravity Engine for Gemini Spark with Video Stream Extractor
 const previewStore = new Map();
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
@@ -27,6 +27,58 @@ async function githubApi(endpoint, method = 'GET', body = null) {
   return data;
 }
 
+// Helper to Scrape and Extract Direct Video Links (m3u8, mp4, iframe) from Movie Pages
+async function extractVideoLinks(pageUrl) {
+  try {
+    const res = await fetch(pageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ar,en-US;q=0.7,en;q=0.3'
+      }
+    });
+
+    if (!res.ok) {
+      throw new Error(`HTTP Error ${res.status}`);
+    }
+
+    const html = await res.text();
+
+    // Regex matchers for direct video sources (.mp4, .m3u8, video embeds, iframes)
+    const mp4Matches = [...html.matchAll(/(https?:\/\/[^\s"'<>]+\.(?:mp4|m3u8)[^\s"'<>]*)/gi)].map(m => m[1]);
+    const iframeMatches = [...html.matchAll(/<iframe[^>]+src=["']([^"']+)["']/gi)].map(m => m[1]);
+    const sourceMatches = [...html.matchAll(/<source[^>]+src=["']([^"']+)["']/gi)].map(m => m[1]);
+    const embedMatches = [...html.matchAll(/(https?:\/\/[^\s"'<>]+\/(?:embed|watch|v|player)[^\s"'<>]*)/gi)].map(m => m[1]);
+
+    const allLinks = [...new Set([...mp4Matches, ...sourceMatches, ...iframeMatches, ...embedMatches])];
+
+    // Filter out static assets
+    const mediaLinks = allLinks.filter(url => 
+      !url.includes('.css') && 
+      !url.includes('.js') && 
+      !url.includes('.jpg') && 
+      !url.includes('.png') && 
+      !url.includes('.svg')
+    );
+
+    // Extract Page Title
+    const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+    const title = titleMatch ? titleMatch[1].trim() : 'صفحة الفلم/المسلسل';
+
+    return {
+      title,
+      pageUrl,
+      foundCount: mediaLinks.length,
+      videoLinks: mediaLinks.slice(0, 10) // Top 10 extracted streams
+    };
+  } catch (err) {
+    return {
+      error: err.message,
+      pageUrl
+    };
+  }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -46,8 +98,19 @@ export default async function handler(req, res) {
     return res.status(200).send(htmlContent);
   }
 
-  // --- 5 Focused, Authenticated Core Tools ---
+  // --- Focused Core Tools + Media Video Extractor ---
   const TOOLS = [
+    {
+      name: 'extract_media_stream',
+      description: 'Media Extractor Tool: Extract direct video streams (.mp4, .m3u8, embed players) from movie & series websites like EgyBest.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'Movie/Series page URL (e.g. EgyBest, Shaft, CimaClub page link)' }
+        },
+        required: ['url']
+      }
+    },
     {
       name: 'think_and_plan',
       description: 'Use FIRST for any complex task to analyze requirements, plan architecture, and reason step-by-step.',
@@ -115,8 +178,8 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     return res.status(200).json({
-      name: 'Antigravity Authenticated GitHub Engine for Gemini Spark',
-      version: '11.0.0',
+      name: 'Antigravity Media & GitHub Engine for Gemini Spark',
+      version: '12.0.0',
       protocolVersion: '2026-07-28',
       capabilities: { tools: {} },
       tools: TOOLS
@@ -136,7 +199,7 @@ export default async function handler(req, res) {
           result: {
             protocolVersion: '2026-07-28',
             capabilities: { tools: {} },
-            serverInfo: { name: 'Antigravity Authenticated GitHub Engine', version: '11.0.0' }
+            serverInfo: { name: 'Antigravity Media Engine', version: '12.0.0' }
           }
         });
       }
@@ -155,6 +218,39 @@ export default async function handler(req, res) {
 
       if (body.method === 'tools/call') {
         const { name, arguments: args } = body.params || {};
+
+        // Movie Stream Extractor Tool
+        if (name === 'extract_media_stream') {
+          const result = await extractVideoLinks(args.url);
+          
+          if (result.error) {
+            return res.status(200).json({
+              jsonrpc: '2.0',
+              id,
+              result: {
+                content: [{
+                  type: 'text',
+                  text: `[Video Extractor Error]: Could not extract video streams from ${args.url}. Reason: ${result.error}`
+                }]
+              }
+            });
+          }
+
+          const linksList = result.videoLinks.length > 0
+            ? result.videoLinks.map((l, i) => `${i + 1}. ${l}`).join('\n')
+            : 'لم يتم العثور على روابط فيديو مباشرة في HTML الصفحة. قد تكون محمية بـ Cloudflare أو require JavaScript player.';
+
+          return res.status(200).json({
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [{
+                type: 'text',
+                text: `[Video Streams Extracted Successfully 🎬]\nTitle: "${result.title}"\nURL: ${args.url}\nTotal Streams Found: ${result.foundCount}\n\nDirect Stream & Embed Links:\n${linksList}`
+              }]
+            }
+          });
+        }
 
         if (name === 'think_and_plan') {
           const stepsStr = (args.analysisSteps || []).map((s, i) => `${i + 1}. ${s}`).join('\n');
@@ -207,14 +303,11 @@ export default async function handler(req, res) {
           const contentB64 = Buffer.from(args.content).toString('base64');
 
           try {
-            // Check if file exists to fetch sha for update
             let existingSha = null;
             try {
               const existing = await githubApi(`/repos/${owner}/${args.repo}/contents/${args.path}`);
               existingSha = existing.sha;
-            } catch (e) {
-              // File does not exist yet (create new file)
-            }
+            } catch (e) {}
 
             const commitBody = {
               message: msg,
@@ -283,7 +376,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       status: 'active',
-      name: 'Antigravity Authenticated GitHub Engine',
+      name: 'Antigravity Media & GitHub Engine',
       tools: TOOLS
     });
   }
