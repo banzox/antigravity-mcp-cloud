@@ -1,4 +1,4 @@
-// Authenticated Antigravity Engine for Gemini Spark with Video Stream Extractor
+// Bulletproof Authenticated Antigravity Engine for Gemini Spark
 const previewStore = new Map();
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
@@ -44,7 +44,6 @@ async function extractVideoLinks(pageUrl) {
 
     const html = await res.text();
 
-    // Regex matchers for direct video sources (.mp4, .m3u8, video embeds, iframes)
     const mp4Matches = [...html.matchAll(/(https?:\/\/[^\s"'<>]+\.(?:mp4|m3u8)[^\s"'<>]*)/gi)].map(m => m[1]);
     const iframeMatches = [...html.matchAll(/<iframe[^>]+src=["']([^"']+)["']/gi)].map(m => m[1]);
     const sourceMatches = [...html.matchAll(/<source[^>]+src=["']([^"']+)["']/gi)].map(m => m[1]);
@@ -52,7 +51,6 @@ async function extractVideoLinks(pageUrl) {
 
     const allLinks = [...new Set([...mp4Matches, ...sourceMatches, ...iframeMatches, ...embedMatches])];
 
-    // Filter out static assets
     const mediaLinks = allLinks.filter(url => 
       !url.includes('.css') && 
       !url.includes('.js') && 
@@ -61,7 +59,6 @@ async function extractVideoLinks(pageUrl) {
       !url.includes('.svg')
     );
 
-    // Extract Page Title
     const titleMatch = html.match(/<title>(.*?)<\/title>/i);
     const title = titleMatch ? titleMatch[1].trim() : 'صفحة الفلم/المسلسل';
 
@@ -69,7 +66,7 @@ async function extractVideoLinks(pageUrl) {
       title,
       pageUrl,
       foundCount: mediaLinks.length,
-      videoLinks: mediaLinks.slice(0, 10) // Top 10 extracted streams
+      videoLinks: mediaLinks.slice(0, 10)
     };
   } catch (err) {
     return {
@@ -89,16 +86,28 @@ export default async function handler(req, res) {
   }
 
   // Handle Live Browser Preview Endpoint (/preview?id=xxx)
-  const urlParams = new URL(req.url, `https://${req.headers.host || 'antigravity-mcp-cloud.vercel.app'}`).searchParams;
-  const previewId = urlParams.get('id');
+  try {
+    const host = req.headers.host || 'antigravity-mcp-cloud.vercel.app';
+    const urlParams = new URL(req.url, `https://${host}`).searchParams;
+    const previewId = urlParams.get('id');
 
-  if (previewId && previewStore.has(previewId)) {
-    const htmlContent = previewStore.get(previewId);
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.status(200).send(htmlContent);
+    if (previewId && previewStore.has(previewId)) {
+      const htmlContent = previewStore.get(previewId);
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.status(200).send(htmlContent);
+    }
+  } catch (e) {}
+
+  // Parse Body Safely
+  let body = req.body || {};
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch (e) {
+      body = {};
+    }
   }
 
-  // --- Focused Core Tools + Media Video Extractor ---
   const TOOLS = [
     {
       name: 'extract_media_stream',
@@ -106,7 +115,7 @@ export default async function handler(req, res) {
       inputSchema: {
         type: 'object',
         properties: {
-          url: { type: 'string', description: 'Movie/Series page URL (e.g. EgyBest, Shaft, CimaClub page link)' }
+          url: { type: 'string', description: 'Movie/Series page URL' }
         },
         required: ['url']
       }
@@ -129,7 +138,7 @@ export default async function handler(req, res) {
       inputSchema: {
         type: 'object',
         properties: {
-          owner: { type: 'string', description: 'GitHub owner (default: banzox)' },
+          owner: { type: 'string', description: 'GitHub owner' },
           repo: { type: 'string', description: 'Repository name' },
           path: { type: 'string', description: 'File path inside repository' }
         },
@@ -142,7 +151,7 @@ export default async function handler(req, res) {
       inputSchema: {
         type: 'object',
         properties: {
-          owner: { type: 'string', description: 'GitHub owner (default: banzox)' },
+          owner: { type: 'string', description: 'GitHub owner' },
           repo: { type: 'string', description: 'Repository name' },
           path: { type: 'string', description: 'File path' },
           content: { type: 'string', description: 'Complete file code' },
@@ -178,28 +187,27 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     return res.status(200).json({
-      name: 'Antigravity Media & GitHub Engine for Gemini Spark',
+      name: 'Antigravity Engine',
       version: '12.0.0',
-      protocolVersion: '2026-07-28',
+      protocolVersion: '2024-11-05',
       capabilities: { tools: {} },
       tools: TOOLS
     });
   }
 
   if (req.method === 'POST') {
-    const body = req.body || {};
-
-    if (body.jsonrpc === '2.0') {
+    if (body && body.jsonrpc === '2.0') {
       const id = body.id ?? 1;
 
       if (body.method === 'initialize') {
+        const proto = body.params?.protocolVersion || '2024-11-05';
         return res.status(200).json({
           jsonrpc: '2.0',
           id,
           result: {
-            protocolVersion: '2026-07-28',
+            protocolVersion: proto,
             capabilities: { tools: {} },
-            serverInfo: { name: 'Antigravity Media Engine', version: '12.0.0' }
+            serverInfo: { name: 'Antigravity Engine', version: '12.0.0' }
           }
         });
       }
@@ -219,7 +227,6 @@ export default async function handler(req, res) {
       if (body.method === 'tools/call') {
         const { name, arguments: args } = body.params || {};
 
-        // Movie Stream Extractor Tool
         if (name === 'extract_media_stream') {
           const result = await extractVideoLinks(args.url);
           
@@ -238,7 +245,7 @@ export default async function handler(req, res) {
 
           const linksList = result.videoLinks.length > 0
             ? result.videoLinks.map((l, i) => `${i + 1}. ${l}`).join('\n')
-            : 'لم يتم العثور على روابط فيديو مباشرة في HTML الصفحة. قد تكون محمية بـ Cloudflare أو require JavaScript player.';
+            : 'لم يتم العثور على روابط فيديو مباشرة في HTML الصفحة.';
 
           return res.status(200).json({
             jsonrpc: '2.0',
@@ -246,7 +253,7 @@ export default async function handler(req, res) {
             result: {
               content: [{
                 type: 'text',
-                text: `[Video Streams Extracted Successfully 🎬]\nTitle: "${result.title}"\nURL: ${args.url}\nTotal Streams Found: ${result.foundCount}\n\nDirect Stream & Embed Links:\n${linksList}`
+                text: `[Video Streams Extracted Successfully 🎬]\nTitle: "${result.title}"\nURL: ${args.url}\nTotal Streams Found: ${result.foundCount}\n\nDirect Stream Links:\n${linksList}`
               }]
             }
           });
@@ -266,7 +273,6 @@ export default async function handler(req, res) {
           });
         }
 
-        // Authenticated GitHub Read
         if (name === 'github_read_code') {
           const owner = args.owner || 'banzox';
           try {
@@ -278,7 +284,7 @@ export default async function handler(req, res) {
               result: {
                 content: [{
                   type: 'text',
-                  text: `[GitHub Authenticated Read: ${owner}/${args.repo}/${args.path}]\n\n${content}`
+                  text: `[GitHub Read: ${owner}/${args.repo}/${args.path}]\n\n${content}`
                 }]
               }
             });
@@ -296,7 +302,6 @@ export default async function handler(req, res) {
           }
         }
 
-        // Authenticated GitHub Write & Commit
         if (name === 'github_write_code') {
           const owner = args.owner || 'banzox';
           const msg = args.commitMessage || `Update ${args.path} via Gemini Spark`;
@@ -323,7 +328,7 @@ export default async function handler(req, res) {
               result: {
                 content: [{
                   type: 'text',
-                  text: `[GitHub Authenticated Commit Success!]\nFile "${args.path}" successfully committed & pushed to GitHub repo "${owner}/${args.repo}"!\nCommit SHA: ${commitResult.commit.sha}\nMessage: "${msg}"`
+                  text: `[GitHub Commit Success!]\nFile "${args.path}" committed to "${owner}/${args.repo}"!`
                 }]
               }
             });
@@ -343,7 +348,7 @@ export default async function handler(req, res) {
 
         if (name === 'build_web_app_preview') {
           const idStr = Math.random().toString(36).substring(2, 10);
-          const fullHtml = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${args.title || 'App Preview'}</title><script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"></head><body class="bg-slate-950 text-white min-h-screen p-4">${args.code}</body></html>`;
+          const fullHtml = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${args.title || 'App Preview'}</title><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-slate-950 text-white min-h-screen p-4">${args.code}</body></html>`;
           previewStore.set(idStr, fullHtml);
           const host = req.headers.host || 'antigravity-mcp-cloud.vercel.app';
           const previewUrl = `https://${host}/?id=${idStr}`;
@@ -353,7 +358,7 @@ export default async function handler(req, res) {
             result: {
               content: [{
                 type: 'text',
-                text: `[App Build Complete]\nTitle: "${args.title}"\n\n🌐 Tap link to view and run live in browser:\n${previewUrl}`
+                text: `[App Build Complete]\nTitle: "${args.title}"\nPreview: ${previewUrl}`
               }]
             }
           });
@@ -375,8 +380,10 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).json({
-      status: 'active',
-      name: 'Antigravity Media & GitHub Engine',
+      name: 'Antigravity Engine',
+      version: '12.0.0',
+      protocolVersion: '2024-11-05',
+      capabilities: { tools: {} },
       tools: TOOLS
     });
   }
